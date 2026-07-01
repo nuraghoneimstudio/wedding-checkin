@@ -143,6 +143,10 @@ input[type=search]:focus{border-color:var(--blue)}
 </head>
 <body>
 
+<div id="firebaseWarn" style="display:none;background:#fef2f2;border-bottom:2px solid #fca5a5;padding:10px 14px;font-size:13px;color:#b91c1c;font-weight:600;text-align:center">
+  &#9888; Firebase not configured — buttons work locally only, data won&apos;t sync between devices.<br>
+  <span style="font-weight:400;font-size:12px">Open index.html in Notepad and replace the PASTE_..._HERE values with your Firebase config.</span>
+</div>
 <div id="hdr">
   <div class="hrow">
     <div class="htitle">
@@ -390,17 +394,23 @@ function norm(s){
     .replace(/[\u064B-\u065F]/g,"").toLowerCase().trim();
 }
 
-try{
-  firebase.initializeApp(FIREBASE_CONFIG);
-  statusRef=firebase.database().ref("wedding_checkin_2026");
-  statusRef.on("value",snap=>{
-    status=snap.val()||{};
-    render();
-    setSyncLive();
-  });
-}catch(e){
-  document.getElementById("foot").innerHTML=
-    `<b style="color:var(--red)">Firebase not configured — open index.html and paste your Firebase config at the top of the file.</b>`;
+const fbConfigured=!Object.values(FIREBASE_CONFIG).some(v=>String(v).includes("PASTE_"));
+if(!fbConfigured){
+  document.getElementById("firebaseWarn").style.display="block";
+  const sb=document.getElementById("syncBtn");
+  if(sb) sb.style.opacity="0.3";
+}else{
+  try{
+    firebase.initializeApp(FIREBASE_CONFIG);
+    statusRef=firebase.database().ref("wedding_checkin_2026");
+    statusRef.on("value",snap=>{
+      status=snap.val()||{};
+      render();
+      setSyncLive();
+    });
+  }catch(e){
+    document.getElementById("firebaseWarn").style.display="block";
+  }
 }
 
 function setSyncLive(){
@@ -416,12 +426,16 @@ function manualSync(){
   if(statusRef) statusRef.once("value",snap=>{status=snap.val()||{};render();setSyncLive();});
 }
 
-async function toggle(id,field){
-  if(!statusRef) return;
+function toggle(id,field){
+  // Update local state immediately so buttons feel instant
   const cur=status[id]||{};
-  const btn=document.getElementById("syncBtn");
-  if(btn){btn.className="spin";}
-  try{ await statusRef.child(id).update({[field]:!cur[field]}); }catch(e){}
+  const newVal=!cur[field];
+  status={...status,[id]:{...cur,[field]:newVal}};
+  render();  // Re-render right away — no waiting for Firebase
+  // Then sync to Firebase in the background (if connected)
+  if(statusRef){
+    statusRef.child(id).update({[field]:newVal}).catch(e=>console.warn("Sync error:",e));
+  }
 }
 
 // ─── Tab switching ────────────────────────────────────────
