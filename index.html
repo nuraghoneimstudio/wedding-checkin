@@ -143,6 +143,558 @@ input[type=search]:focus{border-color:var(--blue)}
 </head>
 <body>
 
+<div id="hdr">
+  <div class="hrow">
+    <div class="htitle">
+      <h1>Ahmed &amp; Tahany &mdash; Guest Check-In</h1>
+      <p>July 4, 2026 &nbsp;&middot;&nbsp; Four Seasons Nile Plaza</p>
+    </div>
+    <button id="syncBtn" onclick="manualSync()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="1 4 1 10 7 10"/><polyline points="23 20 23 14 17 14"/>
+        <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/>
+      </svg>
+      <span id="syncLbl">Connecting...</span>
+    </button>
+  </div>
+  <div id="stats"></div>
+  <div class="tabs">
+    <button class="tab active" onclick="setTab('guests')">Guest List</button>
+    <button class="tab" onclick="setTab('tables')">Tables</button>
+  </div>
+  <div id="srchWrap">
+    <input type="search" id="srch" placeholder="Search guest name (Arabic or English)..." oninput="renderGuests()">
+    <div class="chips" id="chips"></div>
+  </div>
+  <div id="tblFilter" style="display:none"></div>
+</div>
+
+<div id="body">
+  <div class="sub" id="sub"></div>
+  <div id="list"></div>
+</div>
+<div id="foot"></div>
+
+<script>
+// ─── Guest data ───────────────────────────────────────────
+// Table total chair capacity (assigned guests + remaining empty seats from PDF)
+const TABLE_CAPS = {
+  "Polo Right":20,"Table 5":16,"Rose":24,"Jasmine":10,
+  "Lily":10,"Tulip":24,"Orchid":10,"Peony":10,
+  "Flora":24,"Table 6":10,"Table 7":10,"Table 8":10,
+  "Table 1":16,"Daisy":24,"Lavender":10,"Camellia":10,
+  "Gardenia":24,"Lotus":10,"Dahlia":10,"Violet":24,
+  "Table 2":10,"Table 3":10,"Table 4":10
+};
+
+const GUESTS=[
+  {id:"g001",name:"السيد/ محمد عبد الجواد",table:"Polo Right",side:"groom",count:1},
+  {id:"g002",name:"السيد/ عصام جلال السيد",table:"Polo Right",side:"groom",count:1},
+  {id:"g003",name:"السيد/ محمد عربي + نور",table:"Polo Right",side:"groom",count:2},
+  {id:"g004",name:"السيد/ سيد رمضان",table:"Polo Right",side:"groom",count:1},
+  {id:"g005",name:"السيد/ شريف فاضل + ردينة",table:"Table 5",side:"groom",count:2},
+  {id:"g006",name:"الآنسات/ تقى ومريم وميار سعداوي",table:"Table 5",side:"groom",count:3},
+  {id:"g007",name:"السيد/ عمرو خالد الغازي",table:"Table 5",side:"groom",count:1},
+  {id:"g008",name:"السيد/ محمد ثروت",table:"Table 5",side:"groom",count:1},
+  {id:"g009",name:"السيد/ زياد عثمان",table:"Table 5",side:"groom",count:1},
+  {id:"g010",name:"السيد/ احمد عثمان",table:"Table 5",side:"groom",count:1},
+  {id:"g011",name:"السيد/ عمرو مجدي",table:"Table 5",side:"groom",count:1},
+  {id:"g012",name:"السيد/ محمد مجدي",table:"Table 5",side:"groom",count:1},
+  {id:"g013",name:"السيد/ علي سيد حسين",table:"Table 5",side:"groom",count:1},
+  {id:"g014",name:"الآنسة/ مي سيد حسين",table:"Table 5",side:"groom",count:1},
+  {id:"g015",name:"السيد/ لؤي",table:"Table 5",side:"groom",count:1},
+  {id:"g016",name:"الآنسة/ ياسمين فاضل",table:"Table 5",side:"groom",count:1},
+  {id:"g017",name:"الآنسة/ شهد الألفي",table:"Table 5",side:"groom",count:1},
+  {id:"g018",name:"السيد/ موفق حسن + عبير + زينة + سلمى",table:"Rose",side:"groom",count:4},
+  {id:"g019",name:"مدام/ دعاء عبدالله حسن + اسماء + ام محمد",table:"Rose",side:"groom",count:3},
+  {id:"g020",name:"مدام/ هيام حسين + وفاء حسين",table:"Rose",side:"groom",count:2},
+  {id:"g021",name:"السيد/ عمرو المغربي + ابنته سماح",table:"Rose",side:"groom",count:2},
+  {id:"g022",name:"السيد/ عبد السميع زين + زوجته مها صلاح",table:"Rose",side:"groom",count:2},
+  {id:"g023",name:"السيد/ محمد صبحي سليمان + والده",table:"Rose",side:"groom",count:2},
+  {id:"g024",name:"السيد/ أحمد سعيد ابو العينين + عائشة",table:"Rose",side:"groom",count:2},
+  {id:"g025",name:"السيدة/ علا المغربى + ابنها محمود مجدي",table:"Rose",side:"groom",count:2},
+  {id:"g026",name:"السيد/ علاء مصطفى سعد وزوجته السيدة/ ميساء سعيد ابراهيم",table:"Rose",side:"groom",count:2},
+  {id:"g027",name:"السيد/ سامي شماخ + زوجته مها",table:"Rose",side:"groom",count:2},
+  {id:"g028",name:"السيد/ عصام المراغى + لور + مريم",table:"Jasmine",side:"groom",count:3},
+  {id:"g029",name:"السيد/ أحمد عبد الهادي + عزة + سلسبيلا",table:"Jasmine",side:"groom",count:3},
+  {id:"g030",name:"السيد/ خالد محمد ماجد الغازي + ريهام",table:"Jasmine",side:"groom",count:2},
+  {id:"g031",name:"السيد/ عمر هيكل + 1",table:"Jasmine",side:"groom",count:2},
+  {id:"g032",name:"الآنسة/ نادين الرحباني + امال صوايا",table:"Lily",side:"groom",count:2},
+  {id:"g033",name:"السيد/ هشام قايد + زوجته",table:"Lily",side:"groom",count:2},
+  {id:"g034",name:"السيد/ محمد صبحي عبد الغني",table:"Lily",side:"groom",count:1},
+  {id:"g035",name:"مدام/ مها احمد عباس",table:"Lily",side:"groom",count:1},
+  {id:"g036",name:"السيدة/ عبير جرار",table:"Lily",side:"groom",count:1},
+  {id:"g037",name:"Mr. Jose B Sena & Sara",table:"Lily",side:"groom",count:2},
+  {id:"g038",name:"السيد/ ثروت عزيز + داليا",table:"Tulip",side:"groom",count:2},
+  {id:"g039",name:"السيد/ رائد عطا + راغدة + لولي + دعاء",table:"Tulip",side:"groom",count:4},
+  {id:"g040",name:"د./ فاضل حسن فاضل + زوجته نهلة",table:"Tulip",side:"groom",count:2},
+  {id:"g041",name:"مدام/ أماني عزيز الجندي + هاجر + سارة",table:"Tulip",side:"groom",count:3},
+  {id:"g042",name:"السيد/ مراد عبد العزيز + منال + ابنته مها",table:"Tulip",side:"groom",count:3},
+  {id:"g043",name:"مدام/ أمل عزيز + دكتور سعداوى",table:"Tulip",side:"groom",count:2},
+  {id:"g044",name:"السيد/ يوسف الشامي + منى غازى",table:"Tulip",side:"groom",count:2},
+  {id:"g045",name:"السيد/ حسام عادل وزوجته السيدة/ هبة",table:"Tulip",side:"groom",count:2},
+  {id:"g046",name:"السيد/ ابراهيم سعادة",table:"Tulip",side:"groom",count:1},
+  {id:"g047",name:"السيد/ هشام الالفي + منى",table:"Tulip",side:"groom",count:2},
+  {id:"g048",name:"السيد/ محمد عباس + زوجته حنان",table:"Orchid",side:"groom",count:2},
+  {id:"g049",name:"السيد/ عمر الفوي + زوجته حبيبة عباس",table:"Orchid",side:"groom",count:2},
+  {id:"g050",name:"السيد/ أشرف داود + منال حمد",table:"Orchid",side:"groom",count:2},
+  {id:"g051",name:"مدام/ هبة",table:"Orchid",side:"groom",count:1},
+  {id:"g052",name:"السيد/ محمد الحمدي + أمال + ليلى",table:"Orchid",side:"groom",count:3},
+  {id:"g053",name:"حسام حسين + اميرة عزيز",table:"Peony",side:"groom",count:2},
+  {id:"g054",name:"د./ سيد حسين + زوجته رجاء",table:"Peony",side:"groom",count:2},
+  {id:"g055",name:"السيد/ لؤي الخرافي",table:"Peony",side:"groom",count:1},
+  {id:"g056",name:"السيد/ جورج رمسيس + زوجته شيرين",table:"Peony",side:"groom",count:2},
+  {id:"g057",name:"السيد/ محمد سبل + زوجته صفية",table:"Peony",side:"groom",count:2},
+  {id:"g058",name:"السيد/ عادل الالفي",table:"Peony",side:"groom",count:1},
+  {id:"g059",name:"السيد/ أحمد محروس عزيز + اماني سعادة + حمزة",table:"Flora",side:"groom",count:3},
+  {id:"g060",name:"السيد/ كريم محروس عزيز الجندي + عبير + عبد الفتاح + عدي + علي",table:"Flora",side:"groom",count:5},
+  {id:"g061",name:"السيد/ سيد عبد العليم + عبد العليم عبد العليم + مي اسامة + رشا محمود",table:"Flora",side:"groom",count:4},
+  {id:"g062",name:"السيدة/ حسناء رضا + غادة",table:"Flora",side:"groom",count:2},
+  {id:"g063",name:"السيدة/ فريدة نبيل",table:"Flora",side:"groom",count:1},
+  {id:"g064",name:"السيد/ سمير عثمان + عزة",table:"Flora",side:"groom",count:2},
+  {id:"g065",name:"السيد/ تامر حلاوة + علا + رضوى",table:"Flora",side:"groom",count:3},
+  {id:"g066",name:"السيد/ محمود كمال محروس الجندي + مروى",table:"Flora",side:"groom",count:2},
+  {id:"g067",name:"السيد/ أحمد كمال الجندي + ندى",table:"Flora",side:"groom",count:2},
+  {id:"g068",name:"ابراهيم رزق",table:"Table 6",side:"groom",count:1},
+  {id:"g069",name:"زينة شريف",table:"Table 6",side:"groom",count:1},
+  {id:"g070",name:"جنى كسراوي",table:"Table 6",side:"groom",count:1},
+  {id:"g071",name:"ليلى اشرف الخادم",table:"Table 6",side:"groom",count:1},
+  {id:"g072",name:"آية جفال",table:"Table 6",side:"groom",count:1},
+  {id:"g073",name:"سلمى الجارم",table:"Table 6",side:"groom",count:1},
+  {id:"g074",name:"زينة شماخ",table:"Table 6",side:"groom",count:1},
+  {id:"g075",name:"فرح رمسيس",table:"Table 6",side:"groom",count:1},
+  {id:"g076",name:"زينة عباس",table:"Table 6",side:"groom",count:1},
+  {id:"g077",name:"امنية سبل",table:"Table 6",side:"groom",count:1},
+  {id:"g078",name:"كريم بلبل",table:"Table 7",side:"groom",count:1},
+  {id:"g079",name:"سالي كفشير",table:"Table 7",side:"groom",count:1},
+  {id:"g080",name:"جودي منصور",table:"Table 7",side:"groom",count:1},
+  {id:"g081",name:"سنا منصور",table:"Table 7",side:"groom",count:1},
+  {id:"g082",name:"سوزي منصور",table:"Table 7",side:"groom",count:1},
+  {id:"g083",name:"جوليا حوحو",table:"Table 7",side:"groom",count:1},
+  {id:"g084",name:"نادين ايليش",table:"Table 7",side:"groom",count:1},
+  {id:"g085",name:"كريم عويني",table:"Table 7",side:"groom",count:1},
+  {id:"g086",name:"عبد مغربل",table:"Table 7",side:"groom",count:1},
+  {id:"g087",name:"ياسمين حسين",table:"Table 7",side:"groom",count:1},
+  {id:"g088",name:"نور شعبان",table:"Table 8",side:"groom",count:1},
+  {id:"g089",name:"محمد لوباني",table:"Table 8",side:"groom",count:1},
+  {id:"g090",name:"بلال التوخي",table:"Table 8",side:"groom",count:1},
+  {id:"g091",name:"Sevag Eknadossian",table:"Table 8",side:"groom",count:1},
+  {id:"g092",name:"كريم الانصاري",table:"Table 8",side:"groom",count:1},
+  {id:"g093",name:"أحمد أبو غالى + شهد",table:"Table 8",side:"groom",count:2},
+  {id:"g094",name:"كريم حوحو",table:"Table 8",side:"groom",count:1},
+  {id:"g095",name:"هادي حسان",table:"Table 8",side:"groom",count:1},
+  {id:"g096",name:"حمدى محمد الزيات",table:"Table 8",side:"groom",count:1},
+  {id:"b001",name:"ايمان صلاح شريبه + 1",table:"Table 1",side:"bride",count:2},
+  {id:"b002",name:"Yomna Kahwa",table:"Table 1",side:"bride",count:1},
+  {id:"b003",name:"Dr. Salsabeel Kahwa",table:"Table 1",side:"bride",count:1},
+  {id:"b004",name:"Somaya Mohsen Kahwa",table:"Table 1",side:"bride",count:1},
+  {id:"b005",name:"Yomna Jamal Semary + 1",table:"Table 1",side:"bride",count:2},
+  {id:"b006",name:"Tasneem Tawakol",table:"Table 1",side:"bride",count:1},
+  {id:"b007",name:"م. يوسف هاني",table:"Table 1",side:"bride",count:1},
+  {id:"b008",name:"م. مصطفى هاني + 1",table:"Table 1",side:"bride",count:2},
+  {id:"b009",name:"م. زينب صلاح شريبه",table:"Table 1",side:"bride",count:1},
+  {id:"b010",name:"الأستاذ/ حسن ضياء وزوجته",table:"Table 1",side:"bride",count:2},
+  {id:"b011",name:"د./ محمد جلال شريبه + 3",table:"Daisy",side:"bride",count:4},
+  {id:"b012",name:"د. أماني عثمان",table:"Daisy",side:"bride",count:1},
+  {id:"b013",name:"Jamal El Samary & Hala osman",table:"Daisy",side:"bride",count:2},
+  {id:"b014",name:"المهندس/ محمد علاء + 3",table:"Daisy",side:"bride",count:4},
+  {id:"b015",name:"المهندس/ صلاح شريبه + 1",table:"Daisy",side:"bride",count:2},
+  {id:"b016",name:"د./ اعتماد شريبه",table:"Daisy",side:"bride",count:1},
+  {id:"b017",name:"أ./ عمرو علاء شريبه + زوجته",table:"Daisy",side:"bride",count:2},
+  {id:"b018",name:"رجاء شريبه",table:"Daisy",side:"bride",count:1},
+  {id:"b019",name:"د. عزة احمد السيد و م. طارق محمود السيد",table:"Daisy",side:"bride",count:2},
+  {id:"b020",name:"د. محمد عبد الدايم + 3",table:"Daisy",side:"bride",count:4},
+  {id:"b021",name:"سارة هاني عثمان",table:"Daisy",side:"bride",count:1},
+  {id:"b022",name:"د./ جيهان صبري عرفات",table:"Lavender",side:"bride",count:1},
+  {id:"b023",name:"السيدة/ والدة حبيبة قريطم",table:"Lavender",side:"bride",count:1},
+  {id:"b024",name:"السيدة/ سوزي ابراهيم",table:"Lavender",side:"bride",count:1},
+  {id:"b025",name:"أ. جنى عرفه + مريم عرفات + 3",table:"Lavender",side:"bride",count:5},
+  {id:"b026",name:"هشام العسكري + 1",table:"Lavender",side:"bride",count:2},
+  {id:"b027",name:"احمد طارق + 1",table:"Camellia",side:"bride",count:2},
+  {id:"b028",name:"المهندس/ يوسف طارق + 1",table:"Camellia",side:"bride",count:2},
+  {id:"b029",name:"د./ نجيب أبو العينين",table:"Camellia",side:"bride",count:1},
+  {id:"b030",name:"د./ أيمن أبو العينين + 1",table:"Camellia",side:"bride",count:2},
+  {id:"b031",name:"د./ سمر ابو العينين (زوجة د./ طه جلال شريبه) + 2",table:"Camellia",side:"bride",count:3},
+  {id:"b032",name:"د./ حنان كمال زوجة خالد قريطم + 3",table:"Gardenia",side:"bride",count:4},
+  {id:"b033",name:"د./ حسن كمال محمود + 3",table:"Gardenia",side:"bride",count:4},
+  {id:"b034",name:"المستشار/ مصطفى عرفات + 4",table:"Gardenia",side:"bride",count:5},
+  {id:"b035",name:"العقيد/ ممدوح طه + د. سميحة الورداني",table:"Gardenia",side:"bride",count:2},
+  {id:"b036",name:"مصطفى خالد قريطم + 1",table:"Gardenia",side:"bride",count:2},
+  {id:"b037",name:"د. صلاح الدين صبري طه",table:"Gardenia",side:"bride",count:1},
+  {id:"b038",name:"والدة شهد شبانه",table:"Gardenia",side:"bride",count:1},
+  {id:"b039",name:"والدة أحمد أبو غالى",table:"Gardenia",side:"bride",count:1},
+  {id:"b040",name:"أ. نينا عصام قباني",table:"Gardenia",side:"bride",count:1},
+  {id:"b041",name:"السيد/ عصام قباني و مها السويسي",table:"Gardenia",side:"bride",count:2},
+  {id:"b042",name:"سيادة اللواء/ وائل فؤاد والسيدة/ ايناس",table:"Lotus",side:"bride",count:2},
+  {id:"b043",name:"أ./ طارق عبد العزيز المغاوري + شهيرة التركي",table:"Lotus",side:"bride",count:2},
+  {id:"b044",name:"الأستاذ أمير مسعود + 3",table:"Lotus",side:"bride",count:4},
+  {id:"b045",name:"الادهم ابو الفتوح + Fahed Baghafar",table:"Lotus",side:"bride",count:2},
+  {id:"b046",name:"عزة كمال عرفات",table:"Dahlia",side:"bride",count:1},
+  {id:"b047",name:"نادين وليد المغاوري",table:"Dahlia",side:"bride",count:1},
+  {id:"b048",name:"المهندس/ احمد وليد المغاوري + 1",table:"Dahlia",side:"bride",count:2},
+  {id:"b049",name:"احلام العيد",table:"Dahlia",side:"bride",count:1},
+  {id:"b050",name:"أ. عمرو أمير مسعود",table:"Dahlia",side:"bride",count:1},
+  {id:"b051",name:"المهندس/ وليد عبد العزيز المغاوري",table:"Dahlia",side:"bride",count:1},
+  {id:"b052",name:"السيد/ خالد حوحو + زوجته ديانا عادل عباس",table:"Violet",side:"bride",count:2},
+  {id:"b053",name:"السيد/ خالد غانم + زوجته لبنان",table:"Violet",side:"bride",count:2},
+  {id:"b054",name:"السيد/ احمد الجمل",table:"Violet",side:"bride",count:1},
+  {id:"b055",name:"السيد/ معن رافع + سارة + تالا + لين",table:"Violet",side:"bride",count:4},
+  {id:"b056",name:"السيد/ زياد متى + زوجته رولا",table:"Violet",side:"bride",count:2},
+  {id:"b057",name:"السيد/ محمد غازى + ايناس عزيز",table:"Violet",side:"bride",count:2},
+  {id:"b058",name:"السيدة/ اميرة علاء الدين",table:"Violet",side:"bride",count:1},
+  {id:"b059",name:"السيدة/ رنا محمد السيد محمود",table:"Violet",side:"bride",count:1},
+  {id:"b060",name:"السيد/ ايمن حسن امين والسيدة/ آيات لطغى",table:"Violet",side:"bride",count:2},
+  {id:"b061",name:"السيد/ خالد والسيدة/ هبة",table:"Violet",side:"bride",count:2},
+  {id:"b062",name:"السيد/ مروان خالد محمد ماجد الغازي",table:"Violet",side:"bride",count:1},
+  {id:"b063",name:"الآنسة/ جيداء عزيز",table:"Violet",side:"bride",count:1},
+  {id:"b064",name:"السيد/ ابراهيم احمد عزيز",table:"Violet",side:"bride",count:1},
+  {id:"b065",name:"د./ عز الدين مجدي + سلمى",table:"Violet",side:"bride",count:2},
+  {id:"b066",name:"حبيبة قريطم",table:"Table 2",side:"bride",count:1},
+  {id:"b067",name:"نورا الطايير + عمر",table:"Table 2",side:"bride",count:2},
+  {id:"b068",name:"هلا العسال",table:"Table 2",side:"bride",count:1},
+  {id:"b069",name:"أشرقت رضا",table:"Table 2",side:"bride",count:1},
+  {id:"b070",name:"السيد/ محمد عمر",table:"Table 2",side:"bride",count:1},
+  {id:"b071",name:"فريدة وائل الأتربى + 1",table:"Table 2",side:"bride",count:2},
+  {id:"b072",name:"كريستينا متا",table:"Table 2",side:"bride",count:1},
+  {id:"b073",name:"ساره هشام",table:"Table 2",side:"bride",count:1},
+  {id:"b074",name:"حسين بار + 1",table:"Table 3",side:"bride",count:2},
+  {id:"b075",name:"هبة نبيل",table:"Table 3",side:"bride",count:1},
+  {id:"b076",name:"سالي أبو السعود + 2",table:"Table 3",side:"bride",count:3},
+  {id:"b077",name:"هاميس أشرف + خطيبها",table:"Table 3",side:"bride",count:2},
+  {id:"b078",name:"زينة كامل + سيف خالد",table:"Table 3",side:"bride",count:2},
+  {id:"b079",name:"يوسف الجندي",table:"Table 4",side:"bride",count:1},
+  {id:"b080",name:"أحمد خالد غانم",table:"Table 4",side:"bride",count:1},
+  {id:"b081",name:"محمد غانم",table:"Table 4",side:"bride",count:1},
+  {id:"b082",name:"علي مراد",table:"Table 4",side:"bride",count:1},
+  {id:"b083",name:"مارك موريس",table:"Table 4",side:"bride",count:1},
+  {id:"b084",name:"رياض الحلو + خطيبته فرح جميل",table:"Table 4",side:"bride",count:2},
+  {id:"b085",name:"فيصل العلوي",table:"Table 4",side:"bride",count:1},
+  {id:"b086",name:"عبدالرحمان الشوربجي",table:"Table 4",side:"bride",count:1},
+  {id:"b087",name:"محمود احمد عبدالله",table:"Table 4",side:"bride",count:1},
+];
+
+// ─── SVG icons ───────────────────────────────────────────
+const ICO_CHECK=`<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="2 8 6 12 14 4"/></svg>`;
+const ICO_DOT=`<svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="3" fill="currentColor"/></svg>`;
+const ICO_RING=`<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6"/></svg>`;
+const ICO_PERSON=`<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="5" r="3"/><path d="M2 14c0-3.31 2.69-6 6-6s6 2.69 6 6"/></svg>`;
+const ICO_CHAIR=`<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="10" height="6" rx="1"/><path d="M3 9v4M13 9v4M5 13h6"/></svg>`;
+
+// ─── State ────────────────────────────────────────────────
+let status={}, curTab="guests", gFilter="all", tblFilter="all";
+let statusRef=null;
+
+// ─── Firebase ─────────────────────────────────────────────
+function norm(s){
+  return(s||"").replace(/[أإآٱ]/g,"ا").replace(/ة/g,"ه").replace(/ى/g,"ي")
+    .replace(/[\u064B-\u065F]/g,"").toLowerCase().trim();
+}
+
+const fbConfigured=!Object.values(FIREBASE_CONFIG).some(v=>String(v).includes("PASTE_"));
+if(!fbConfigured){
+  
+  const sb=document.getElementById("syncBtn");
+  if(sb) sb.style.opacity="0.3";
+}else{
+  try{
+    firebase.initializeApp(FIREBASE_CONFIG);
+    statusRef=firebase.database().ref("wedding_checkin_2026");
+    statusRef.on("value",snap=>{
+      status=snap.val()||{};
+      render();
+      setSyncLive();
+    });
+  }catch(e){
+    
+  }
+}
+
+function setSyncLive(){
+  const b=document.getElementById("syncBtn");
+  const l=document.getElementById("syncLbl");
+  if(b){b.className="live";b.classList.remove("spin");}
+  if(l) l.textContent="Live";
+}
+
+function manualSync(){
+  const b=document.getElementById("syncBtn");
+  if(b){b.className="spin";}
+  if(statusRef) statusRef.once("value",snap=>{status=snap.val()||{};render();setSyncLive();});
+}
+
+function toggle(id,field){
+  // Update local state immediately so buttons feel instant
+  const cur=status[id]||{};
+  const newVal=!cur[field];
+  status={...status,[id]:{...cur,[field]:newVal}};
+  render();  // Re-render right away — no waiting for Firebase
+  // Then sync to Firebase in the background (if connected)
+  if(statusRef){
+    statusRef.child(id).update({[field]:newVal}).catch(e=>console.warn("Sync error:",e));
+  }
+}
+
+// ─── Tab switching ────────────────────────────────────────
+function setTab(t){
+  curTab=t;
+  document.querySelectorAll(".tab").forEach(el=>el.classList.toggle("active",el.textContent.toLowerCase().includes(t==="guests"?"guest":"table")));
+  const sw=document.getElementById("srchWrap");
+  const tf=document.getElementById("tblFilter");
+  sw.style.display=t==="guests"?"":"none";
+  tf.style.display=t==="tables"?"flex":"none";
+  render();
+}
+
+// ─── Render stats (always) ────────────────────────────────
+function renderStats(){
+  const arrived=GUESTS.filter(g=>status[g.id]?.arrived).length;
+  const seated=GUESTS.filter(g=>status[g.id]?.seated).length;
+  const pending=GUESTS.length-arrived;
+  document.getElementById("stats").innerHTML=
+    [["Total",GUESTS.length,"var(--txt)"],
+     ["Arrived",arrived,"var(--green)"],
+     ["Seated",seated,"var(--blue)"],
+     ["Pending",pending,"var(--amber)"]].map(([l,v,c])=>
+      `<div class="stat"><div class="stat-n" style="color:${c}">${v}</div><div class="stat-l">${l}</div></div>`
+    ).join("");
+  const totalPpl=GUESTS.reduce((s,g)=>s+g.count,0);
+  const arrivedPpl=GUESTS.filter(g=>status[g.id]?.arrived).reduce((s,g)=>s+g.count,0);
+  document.getElementById("foot").innerHTML=
+    `${arrived} of ${GUESTS.length} families arrived &nbsp;&middot;&nbsp; ${seated} seated &nbsp;&middot;&nbsp; ${arrivedPpl} of ${totalPpl} total guests arrived`;
+}
+
+// ─── Render guest list ────────────────────────────────────
+const CHIPS_DEF=[["all","All"],["pending","Not Arrived"],["middle","Arrived, Not Seated"],["seated","Seated"],["groom","Groom's Side"],["bride","Bride's Side"]];
+
+function renderGuests(){
+  document.getElementById("chips").innerHTML=CHIPS_DEF.map(([k,l])=>
+    `<button class="chip${gFilter===k?" on":""}" onclick="gFilter='${k}';renderGuests()">${l}</button>`
+  ).join("");
+
+  const search=(document.getElementById("srch")||{}).value||"";
+  const sq=norm(search);
+  const list=GUESTS.filter(g=>{
+    const st=status[g.id]||{};
+    if(gFilter==="groom"&&g.side!=="groom") return false;
+    if(gFilter==="bride"&&g.side!=="bride") return false;
+    if(gFilter==="pending"&&st.arrived) return false;
+    if(gFilter==="middle"&&(!st.arrived||st.seated)) return false;
+    if(gFilter==="seated"&&!st.seated) return false;
+    if(sq) return norm(g.name).includes(sq)||g.name.toLowerCase().includes(search.toLowerCase());
+    return true;
+  });
+
+  document.getElementById("sub").textContent=`${list.length} result${list.length!==1?"s":""}`;
+  document.getElementById("list").innerHTML=list.length===0
+    ?`<div style="text-align:center;padding:40px;color:var(--muted)">No results found</div>`
+    :list.map(g=>{
+        const st=status[g.id]||{};
+        const isA=!!st.arrived, isS=!!st.seated;
+        const cls=isS?"S":isA?"A":"";
+        return`<div class="gc ${cls}">
+          <div class="gcrow">
+            <div class="gcinfo">
+              <div class="gcname">${g.name}</div>
+              <div class="gcmeta">
+                <span class="bdg bdg-${g.side}">${g.table} &middot; ${g.side==="groom"?"Groom":"Bride"}</span>
+                <span class="gcnt">${g.count} ${g.count===1?"guest":"guests"}</span>
+              </div>
+            </div>
+            <div class="btns">
+              <button class="abtn${isA?" A":""}" onclick="toggle('${g.id}','arrived')" aria-label="Mark arrived">
+                <span style="width:22px;height:22px;color:${isA?"var(--green)":"var(--muted)"}">${isA?ICO_CHECK:ICO_RING}</span>
+                <span>Arrived</span>
+              </button>
+              <button class="abtn${isS?" S":""}" onclick="toggle('${g.id}','seated')" aria-label="Mark seated">
+                <span style="width:22px;height:22px;color:${isS?"var(--blue)":"var(--muted)"}">${isS?ICO_CHECK:ICO_RING}</span>
+                <span>Seated</span>
+              </button>
+            </div>
+          </div>
+        </div>`;
+      }).join("");
+}
+
+// ─── Render tables tab ────────────────────────────────────
+const TABLE_ORDER=["Polo Right","Table 5","Rose","Jasmine","Lily","Tulip","Orchid","Peony","Flora","Table 6","Table 7","Table 8","Table 1","Daisy","Lavender","Camellia","Gardenia","Lotus","Dahlia","Violet","Table 2","Table 3","Table 4"];
+
+function renderTables(){
+  const tfOpts=[["all","All Tables"],["groom","Groom's Side"],["bride","Bride's Side"]];
+  document.getElementById("tblFilter").innerHTML=tfOpts.map(([k,l])=>
+    `<button class="tfc${tblFilter===k?" on":""}" onclick="tblFilter='${k}';renderTables()">${l}</button>`
+  ).join("");
+
+  const tables=TABLE_ORDER.filter(t=>{
+    const g=GUESTS.find(x=>x.table===t);
+    if(!g) return false;
+    if(tblFilter==="groom"&&g.side!=="groom") return false;
+    if(tblFilter==="bride"&&g.side!=="bride") return false;
+    return true;
+  });
+
+  document.getElementById("sub").textContent=`${tables.length} table${tables.length!==1?"s":""}`;
+  document.getElementById("list").innerHTML=tables.map(tName=>{
+    const tGuests=GUESTS.filter(g=>g.table===tName);
+    const side=tGuests[0].side;
+    const cap=TABLE_CAPS[tName]||tGuests.reduce((s,g)=>s+g.count,0);
+    const assigned=tGuests.reduce((s,g)=>s+g.count,0);
+    const empty=cap-assigned;
+
+    const seated=tGuests.filter(g=>status[g.id]?.seated);
+    const arrived=tGuests.filter(g=>status[g.id]?.arrived&&!status[g.id]?.seated);
+    const pending=tGuests.filter(g=>!status[g.id]?.arrived);
+    const seatedPpl=seated.reduce((s,g)=>s+g.count,0);
+    const pct=Math.round((seatedPpl/cap)*100);
+
+    const guestRows=tGuests.map(g=>{
+      const st=status[g.id]||{};
+      const isS=!!st.seated, isA=!!st.arrived;
+      const cls=isS?"S":isA?"A":"P";
+      const ic=isS?`<span style="color:var(--green)">${ICO_CHECK}</span>`:isA?`<span style="color:var(--amber)">${ICO_DOT}</span>`:`<span style="color:var(--muted)">${ICO_RING}</span>`;
+      return`<div class="tg ${cls}">
+        <span class="tg-ic ${cls}">${ic}</span>
+        <span class="tg-name">${g.name}</span>
+        <span class="tg-cnt">${g.count}</span>
+      </div>`;
+    }).join("");
+
+    return`<div class="tc">
+      <div class="tc-head">
+        <span class="bdg bdg-${side} tc-name">${tName}</span>
+        <span class="tc-side">${side==="groom"?"Groom's Side":"Bride's Side"}</span>
+        <span class="tc-chairs">${ICO_CHAIR}&thinsp;${cap} chairs &nbsp; ${empty>0?`<b style="color:var(--amber)">${empty} empty</b>`:""}</span>
+      </div>
+      <div class="tc-pb"><div class="tc-fill" style="width:${pct}%"></div></div>
+      <div class="tc-stats">
+        ${seated.length?`<span class="ts g">${ICO_CHECK} ${seated.length} seated (${seatedPpl} ppl)</span>`:""}
+        ${arrived.length?`<span class="ts a">${ICO_DOT} ${arrived.length} arrived, waiting</span>`:""}
+        ${pending.length?`<span class="ts p">${ICO_RING} ${pending.length} not arrived</span>`:""}
+      </div>
+      <hr class="tc-divider">
+      ${guestRows}
+    </div>`;
+  }).join("");
+}
+
+// ─── Main render ──────────────────────────────────────────
+function render(){
+  renderStats();
+  if(curTab==="guests") renderGuests();
+  else renderTables();
+}
+
+render();
+</script>
+</body>
+</html>}
+@media(prefers-color-scheme:dark){
+  :root{--bg:#0f0f0f;--card:#1a1a1a;--bdr:#2a2a2a;--bdr2:#444;
+    --txt:#f0f0f0;--muted:#666;--light:#222;
+    --blue-bg:#1a2d4a;--blue-bdr:#2563eb;--blue-dk:#93b4f7;
+    --green-bg:#14401e;--green-bdr:#16a34a;--green-dk:#86efac;
+    --amber-bg:#3d2700;--amber-bdr:#d97706;
+    --purple-bg:#2e1a56;--purple-bdr:#7c3aed;--purple-dk:#c4b5fd;
+    --red-bg:#450a0a}
+}
+html,body{height:100%;background:var(--bg);color:var(--txt);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif}
+
+/* ── Header ─────────────────────────────────────────────── */
+#hdr{position:sticky;top:0;background:var(--card);border-bottom:1px solid var(--bdr);z-index:50;padding:12px 14px 0}
+.hrow{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.htitle h1{font-size:15px;font-weight:700;letter-spacing:-.3px}
+.htitle p{font-size:11px;color:var(--muted);margin-top:1px}
+#syncBtn{border:1px solid var(--bdr2);background:none;border-radius:8px;padding:5px 10px;cursor:pointer;font-size:11px;color:var(--muted);display:flex;align-items:center;gap:5px;font-family:inherit}
+#syncBtn svg{width:13px;height:13px;transition:transform .4s}
+#syncBtn.spin svg{animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+#syncBtn.live{color:var(--green);border-color:var(--green-bdr)}
+
+/* ── Stats bar ──────────────────────────────────────────── */
+#stats{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px}
+.stat{background:var(--light);border-radius:8px;padding:7px 3px;text-align:center}
+.stat-n{font-size:20px;font-weight:700;line-height:1}
+.stat-l{font-size:10px;color:var(--muted);margin-top:2px}
+
+/* ── Tabs ────────────────────────────────────────────────── */
+.tabs{display:flex;border-bottom:1px solid var(--bdr);margin:0 -14px}
+.tab{flex:1;padding:9px 0 10px;text-align:center;font-size:13px;font-weight:600;cursor:pointer;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-1px;background:none;border-top:none;border-left:none;border-right:none;font-family:inherit;transition:all .15s}
+.tab.active{color:var(--blue);border-bottom-color:var(--blue)}
+
+/* ── Search + Chips (guests tab only) ─────────────────────── */
+#srchWrap{padding:10px 0 0}
+input[type=search]{width:100%;padding:9px 12px;border:1px solid var(--bdr2);border-radius:var(--r);background:var(--card);color:var(--txt);font-size:14px;outline:none;margin-bottom:8px;font-family:inherit}
+input[type=search]:focus{border-color:var(--blue)}
+.chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:12px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex-shrink:0;padding:5px 13px;border-radius:20px;font-size:12px;font-weight:500;cursor:pointer;border:1px solid var(--bdr2);background:none;color:var(--muted);white-space:nowrap;font-family:inherit;transition:all .15s}
+.chip.on{border-color:var(--blue-bdr);background:var(--blue-bg);color:var(--blue-dk)}
+
+/* ── Table filter (tables tab) ──────────────────────────── */
+#tblFilter{padding:10px 0 4px;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}
+#tblFilter::-webkit-scrollbar{display:none}
+.tfc{flex-shrink:0;padding:4px 11px;border-radius:20px;font-size:11px;font-weight:500;cursor:pointer;border:1px solid var(--bdr2);background:none;color:var(--muted);font-family:inherit;transition:all .15s;white-space:nowrap}
+.tfc.on{border-color:var(--blue-bdr);background:var(--blue-bg);color:var(--blue-dk)}
+
+/* ── Body ────────────────────────────────────────────────── */
+#body{padding:8px 12px 20px}
+.sub{font-size:11px;color:var(--muted);padding:2px 2px 6px}
+
+/* ── Guest card ─────────────────────────────────────────── */
+.gc{background:var(--card);border-radius:12px;padding:11px 12px;margin-bottom:7px;border:1px solid var(--bdr);transition:border-color .15s}
+.gc.A{border-left:3px solid var(--green)}
+.gc.S{border-left:3px solid var(--blue);opacity:.75}
+.gcrow{display:flex;gap:8px;align-items:center}
+.gcinfo{flex:1;min-width:0}
+.gcname{font-size:14px;font-weight:600;line-height:1.3;margin-bottom:4px;word-break:break-word}
+.gc.S .gcname{text-decoration:line-through;color:var(--muted);font-weight:400}
+.gcmeta{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.bdg{font-size:11px;padding:2px 8px;border-radius:20px;font-weight:600}
+.bdg-g{background:var(--blue-bg);color:var(--blue-dk);border:1px solid var(--blue-bdr)}
+.bdg-b{background:var(--purple-bg);color:var(--purple-dk);border:1px solid var(--purple-bdr)}
+.gcnt{font-size:11px;color:var(--muted)}
+
+/* ── Action buttons ─────────────────────────────────────── */
+.btns{display:flex;gap:6px;flex-shrink:0}
+.abtn{width:56px;height:52px;border-radius:var(--r);cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;border:1.5px solid var(--bdr2);background:none;font-family:inherit;transition:all .12s;-webkit-user-select:none;user-select:none}
+.abtn:active{transform:scale(.93)}
+.abtn.A{border-color:var(--green-bdr);background:var(--green-bg)}
+.abtn.S{border-color:var(--blue-bdr);background:var(--blue-bg)}
+.abtn svg{width:20px;height:20px}
+.abtn span{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)}
+.abtn.A span{color:var(--green-dk)}
+.abtn.S span{color:var(--blue-dk)}
+
+/* ── Table cards ─────────────────────────────────────────── */
+.tc{background:var(--card);border-radius:12px;padding:13px 14px;margin-bottom:9px;border:1px solid var(--bdr)}
+.tc-head{display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap}
+.tc-name{font-size:14px;font-weight:700}
+.tc-side{font-size:11px;color:var(--muted)}
+.tc-chairs{margin-left:auto;font-size:12px;color:var(--muted);background:var(--light);padding:3px 9px;border-radius:20px}
+.tc-pb{height:6px;background:var(--light);border-radius:3px;overflow:hidden;margin-bottom:10px}
+.tc-fill{height:100%;border-radius:3px;background:var(--green);transition:width .3s}
+.tc-stats{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.ts{font-size:12px;font-weight:600;padding:3px 9px;border-radius:20px}
+.ts.g{background:var(--green-bg);color:var(--green-dk)}
+.ts.a{background:var(--amber-bg);color:var(--amber)}
+.ts.p{background:var(--light);color:var(--muted)}
+.tc-divider{border:none;border-top:1px solid var(--bdr);margin:8px 0}
+.tg{display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--bdr)}
+.tg:last-child{border:none;padding-bottom:0}
+.tg-ic{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.tg-ic.S{background:var(--green-bg)}
+.tg-ic.A{background:var(--amber-bg)}
+.tg-ic.P{background:var(--light)}
+.tg-ic svg{width:12px;height:12px}
+.tg-name{flex:1;font-size:13px;word-break:break-word;line-height:1.3}
+.tg.S .tg-name{text-decoration:line-through;color:var(--muted)}
+.tg-cnt{font-size:11px;color:var(--muted);flex-shrink:0}
+
+/* ── Footer ─────────────────────────────────────────────── */
+#foot{border-top:1px solid var(--bdr);background:var(--card);padding:10px 14px;text-align:center;font-size:12px;color:var(--muted);margin-top:4px}
+</style>
+</head>
+<body>
+
 <div id="firebaseWarn" style="display:none;background:#fef2f2;border-bottom:2px solid #fca5a5;padding:10px 14px;font-size:13px;color:#b91c1c;font-weight:600;text-align:center">
   &#9888; Firebase not configured — buttons work locally only, data won&apos;t sync between devices.<br>
   <span style="font-weight:400;font-size:12px">Open index.html in Notepad and replace the PASTE_..._HERE values with your Firebase config.</span>
